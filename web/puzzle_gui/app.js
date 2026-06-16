@@ -2,6 +2,7 @@ const state = {
   setup: null,
   moves: [],
   response: null,
+  busy: false,
 };
 
 const sample = {
@@ -172,6 +173,28 @@ function readSetup() {
   };
 }
 
+function showError(message) {
+  const errorBox = byId("errorBox");
+  errorBox.textContent = message;
+  errorBox.classList.remove("hidden");
+}
+
+function hideError() {
+  byId("errorBox").classList.add("hidden");
+}
+
+function setBusy(busy) {
+  state.busy = busy;
+  byId("loadPosition").disabled = busy;
+  byId("playManual").disabled = busy;
+  byId("undoMove").disabled = busy || state.moves.length === 0;
+  byId("manualMove").disabled = busy;
+
+  for (const button of document.querySelectorAll("#legalCards .card-button")) {
+    button.disabled = busy;
+  }
+}
+
 function writeSetup(setup) {
   byId("target").value = setup.target;
   byId("trump").value = setup.trump;
@@ -186,32 +209,57 @@ function writeSetup(setup) {
   setStartModeVisibility();
 }
 
-async function analyse() {
+async function analyse(options = {}) {
   if (!state.setup) {
     return;
   }
 
-  const errorBox = byId("errorBox");
-  errorBox.classList.add("hidden");
+  hideError();
+  setBusy(true);
 
-  const response = await fetch("/api/analyse", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      setup: state.setup,
-      moves: state.moves,
-    }),
-  });
+  try {
+    const response = await fetch("/api/analyse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        setup: state.setup,
+        moves: state.moves,
+      }),
+    });
 
-  const data = await response.json();
-  if (data.status !== "ok") {
-    errorBox.textContent = data.message || "Analysis failed";
-    errorBox.classList.remove("hidden");
+    const data = await response.json();
+    if (data.status !== "ok") {
+      if (options.revertOnError) {
+        state.moves.pop();
+      }
+      showError(data.message || "Analysis failed");
+      return;
+    }
+
+    state.response = data;
+    renderState();
+  } catch (error) {
+    if (options.revertOnError) {
+      state.moves.pop();
+    }
+    showError(error instanceof Error ? error.message : "Analysis failed");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function attemptMove(cardText) {
+  if (state.busy || !state.setup || !state.response?.analysis || state.response?.result?.finished) {
     return;
   }
 
-  state.response = data;
-  renderState();
+  const move = cardText.trim().toUpperCase();
+  if (!move) {
+    return;
+  }
+
+  state.moves.push(move);
+  analyse({ revertOnError: true });
 }
 
 function badge(label, cls) {
@@ -357,10 +405,8 @@ function renderMoveButtons(container, cards, optimalCards) {
     button.type = "button";
     button.className = `card-button ${optimalSet.has(card) ? "optimal" : ""}`.trim();
     button.textContent = card;
-    button.addEventListener("click", () => {
-      state.moves.push(card);
-      analyse();
-    });
+    button.disabled = state.busy;
+    button.addEventListener("click", () => attemptMove(card));
     container.appendChild(button);
   }
 }
@@ -405,6 +451,7 @@ function loadPosition() {
   state.setup = readSetup();
   state.moves = [];
   state.response = null;
+  hideError();
   analyse();
 }
 
@@ -444,21 +491,21 @@ function clearAll() {
   byId("legalCards").innerHTML = "";
   byId("evaluationBody").innerHTML = "";
   byId("historyBody").innerHTML = "";
-  byId("errorBox").classList.add("hidden");
+  hideError();
+  setBusy(false);
 }
 
 function playManual() {
-  const move = byId("manualMove").value.trim();
+  const move = byId("manualMove").value.trim().toUpperCase();
   if (!move) {
     return;
   }
-  state.moves.push(move);
   byId("manualMove").value = "";
-  analyse();
+  attemptMove(move);
 }
 
 function undoMove() {
-  if (state.moves.length === 0) {
+  if (state.busy || state.moves.length === 0) {
     return;
   }
   state.moves.pop();
@@ -473,5 +520,11 @@ document.addEventListener("DOMContentLoaded", () => {
   byId("sampleDeal").addEventListener("click", () => writeSetup(sample));
   byId("playManual").addEventListener("click", playManual);
   byId("undoMove").addEventListener("click", undoMove);
+  byId("manualMove").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      playManual();
+    }
+  });
   setStartModeVisibility();
+  setBusy(false);
 });
