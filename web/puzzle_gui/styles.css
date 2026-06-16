@@ -79,8 +79,14 @@ h3 {
 
 .intro,
 .helpbox,
-.summary-label {
+.summary-label,
+.explain-copy {
   color: var(--muted);
+}
+
+.explain-copy {
+  margin: 12px 0 0;
+  line-height: 1.45;
 }
 
 .toolbar {

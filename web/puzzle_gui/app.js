@@ -253,6 +253,7 @@ function renderState() {
 
   renderBoard(data);
   renderCardList(byId("optimalCards"), analysis.optimalCards, "pill ok");
+  byId("optimalReason").textContent = analysis.summaryReason || "No explanation available.";
   renderMoveButtons(byId("legalCards"), analysis.legalCards, analysis.optimalCards);
   renderEvaluations(analysis.evaluations);
   renderHistory(history);
@@ -394,6 +395,7 @@ function renderHistory(history) {
       <td>${item.card}</td>
       <td>${item.optimal ? "Yes" : "No"}</td>
       <td>${(item.optimalCardsAtTurn || []).join(" ")}</td>
+      <td>${item.reason || ""}</td>
     `;
     body.appendChild(row);
   }
@@ -438,6 +440,7 @@ function clearAll() {
   byId("boardTricks").textContent = "Tricks: NS 0 / EW 0";
   byId("lastWinner").textContent = "Last winner: -";
   byId("optimalCards").innerHTML = "";
+  byId("optimalReason").textContent = "Load a position to see why these cards are optimal.";
   byId("legalCards").innerHTML = "";
   byId("evaluationBody").innerHTML = "";
   byId("historyBody").innerHTML = "";

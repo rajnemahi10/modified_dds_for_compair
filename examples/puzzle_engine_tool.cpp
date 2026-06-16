@@ -27,6 +27,22 @@ struct Request
   std::vector<std::string> moves;
 };
 
+struct HistoryTurnInfo
+{
+  std::string player;
+  std::string card;
+  bool optimal = false;
+  std::vector<EngineCard> optimalCardsAtTurn;
+  std::string reason;
+  int bestNsTotal = 0;
+  int bestEwTotal = 0;
+  int chosenNsTotal = 0;
+  int chosenEwTotal = 0;
+  int bestCurrentSideTotal = 0;
+  int chosenCurrentSideTotal = 0;
+  std::string side;
+};
+
 auto trim(const std::string& input) -> std::string
 {
   std::size_t start = 0;
@@ -190,6 +206,83 @@ auto jsonEscape(const std::string& input) -> std::string
   return out;
 }
 
+auto sameCard(const EngineCard& lhs, const EngineCard& rhs) -> bool
+{
+  return lhs.suit == rhs.suit && lhs.rank == rhs.rank;
+}
+
+auto bestOtherSideTotal(
+  const PositionAnalysis& analysis,
+  const int chosenCurrentSideTotal) -> int
+{
+  int bestOther = -1;
+  for (const MoveEvaluation& evaluation : analysis.evaluations)
+  {
+    if (evaluation.currentSideTotalTricksIfPlayed != chosenCurrentSideTotal)
+    {
+      bestOther = std::max(bestOther, evaluation.currentSideTotalTricksIfPlayed);
+    }
+  }
+  return bestOther;
+}
+
+auto reasonForEvaluation(
+  const PositionAnalysis& analysis,
+  const MoveEvaluation& evaluation) -> std::string
+{
+  const bool nsSide = (analysis.side == NS_SIDE);
+  const std::string side = sideName(analysis.side);
+  const int chosen = evaluation.currentSideTotalTricksIfPlayed;
+  const int best = analysis.bestCurrentSideTotal;
+  const int otherBest = bestOtherSideTotal(analysis, chosen);
+  const int targetTotal = nsSide ? analysis.bestNsTotal : analysis.bestEwTotal;
+  const int chosenNs = evaluation.nsTotalTricksIfPlayed;
+  const int chosenEw = evaluation.ewTotalTricksIfPlayed;
+
+  std::ostringstream out;
+  if (evaluation.optimal)
+  {
+    out << "Optimal because it keeps " << side << " at "
+        << targetTotal << " total tricks, which is the best achievable result from this position";
+    if (otherBest >= 0 && otherBest < best)
+    {
+      out << ". Other legal cards only keep " << side
+          << " to " << otherBest;
+    }
+    out << ". Result after this card: NS " << chosenNs
+        << " / EW " << chosenEw << ".";
+  }
+  else
+  {
+    out << "Not optimal because it leaves " << side
+        << " with only " << chosen
+        << " total tricks from here, while the best legal moves keep "
+        << side << " to " << best
+        << ". Result after this card: NS " << chosenNs
+        << " / EW " << chosenEw << ".";
+  }
+  return out.str();
+}
+
+auto emitJsonString(const std::string& value) -> void
+{
+  std::cout << "\"" << jsonEscape(value) << "\"";
+}
+
+auto findEvaluation(
+  const PositionAnalysis& analysis,
+  const EngineCard& card) -> const MoveEvaluation*
+{
+  for (const MoveEvaluation& evaluation : analysis.evaluations)
+  {
+    if (sameCard(evaluation.card, card))
+    {
+      return &evaluation;
+    }
+  }
+  return nullptr;
+}
+
 auto readRequest(Request* request, std::string* error) -> bool
 {
   std::map<std::string, std::string> kv;
@@ -331,19 +424,49 @@ auto main() -> int
     return emitError(rc, "Failed to load position");
   }
 
+  std::vector<HistoryTurnInfo> historyInfo;
   for (const std::string& moveText : request.moves)
   {
+    rc = engine.analyseCurrentPosition();
+    if (rc != RETURN_NO_FAULT)
+    {
+      return emitError(rc, "Analysis failed before replay move: " + moveText);
+    }
+
     EngineCard card;
     if (PuzzleEngine::parseCard(moveText, &card) != RETURN_NO_FAULT)
     {
       return emitError(RETURN_PBN_FAULT, "Invalid move card: " + moveText);
     }
 
+    const PositionAnalysis& turnAnalysis = engine.analysis();
+    const MoveEvaluation* chosenEvaluation = findEvaluation(turnAnalysis, card);
+    if (chosenEvaluation == nullptr)
+    {
+      return emitError(RETURN_PLAY_FAULT, "Move not legal in position: " + moveText);
+    }
+
+    HistoryTurnInfo turnInfo;
+    turnInfo.player = playerName(turnAnalysis.player);
+    turnInfo.card = cardString(card);
+    turnInfo.optimal = chosenEvaluation->optimal;
+    turnInfo.optimalCardsAtTurn = turnAnalysis.optimalCards;
+    turnInfo.reason = reasonForEvaluation(turnAnalysis, *chosenEvaluation);
+    turnInfo.bestNsTotal = turnAnalysis.bestNsTotal;
+    turnInfo.bestEwTotal = turnAnalysis.bestEwTotal;
+    turnInfo.chosenNsTotal = chosenEvaluation->nsTotalTricksIfPlayed;
+    turnInfo.chosenEwTotal = chosenEvaluation->ewTotalTricksIfPlayed;
+    turnInfo.bestCurrentSideTotal = turnAnalysis.bestCurrentSideTotal;
+    turnInfo.chosenCurrentSideTotal = chosenEvaluation->currentSideTotalTricksIfPlayed;
+    turnInfo.side = sideName(turnAnalysis.side);
+
     rc = engine.playMove(card);
     if (rc != RETURN_NO_FAULT)
     {
       return emitError(rc, "Failed to replay move: " + moveText);
     }
+
+    historyInfo.push_back(turnInfo);
   }
 
   rc = engine.analyseCurrentPosition();
@@ -394,24 +517,44 @@ auto main() -> int
               << "\"optimal\":" << (evaluation.optimal ? "true" : "false") << ","
               << "\"nsTotal\":" << evaluation.nsTotalTricksIfPlayed << ","
               << "\"ewTotal\":" << evaluation.ewTotalTricksIfPlayed << ","
-              << "\"currentSideTotal\":" << evaluation.currentSideTotalTricksIfPlayed
+              << "\"currentSideTotal\":" << evaluation.currentSideTotalTricksIfPlayed << ","
+              << "\"reason\":";
+    emitJsonString(reasonForEvaluation(analysis, evaluation));
+    std::cout
               << "}";
   }
-  std::cout << "]},";
+  std::cout << "],\"summaryReason\":";
+  {
+    std::ostringstream summary;
+    summary << "These green cards are optimal because they all preserve the best achievable "
+            << sideName(analysis.side) << " total from this position: "
+            << analysis.bestCurrentSideTotal << ".";
+    emitJsonString(summary.str());
+  }
+  std::cout << "},";
 
   std::cout << "\"history\":[";
-  for (std::size_t i = 0; i < history.size(); ++i)
+  for (std::size_t i = 0; i < historyInfo.size(); ++i)
   {
-    const PlayedMove& move = history[i];
+    const HistoryTurnInfo& move = historyInfo[i];
     if (i != 0)
       std::cout << ",";
     std::cout << "{"
-              << "\"player\":\"" << playerName(move.player) << "\","
-              << "\"card\":\"" << cardString(move.card) << "\","
+              << "\"player\":\"" << move.player << "\","
+              << "\"card\":\"" << move.card << "\","
               << "\"optimal\":" << (move.optimal ? "true" : "false") << ","
               << "\"optimalCardsAtTurn\":";
     emitCards(move.optimalCardsAtTurn);
-    std::cout << "}";
+    std::cout << ",\"reason\":";
+    emitJsonString(move.reason);
+    std::cout << ",\"side\":\"" << move.side << "\","
+              << "\"bestNsTotal\":" << move.bestNsTotal << ","
+              << "\"bestEwTotal\":" << move.bestEwTotal << ","
+              << "\"chosenNsTotal\":" << move.chosenNsTotal << ","
+              << "\"chosenEwTotal\":" << move.chosenEwTotal << ","
+              << "\"bestCurrentSideTotal\":" << move.bestCurrentSideTotal << ","
+              << "\"chosenCurrentSideTotal\":" << move.chosenCurrentSideTotal
+              << "}";
   }
   std::cout << "]";
   std::cout << "}\n";
