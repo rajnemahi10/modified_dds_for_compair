@@ -41,6 +41,64 @@ Martin Nygren, May 2026
 
 [Notes about the build system](docs/BUILD_SYSTEM.md)
 
+## Puzzle Engine and GUI Additions
+
+This fork adds a bridge puzzle workflow on top of DDS:
+
+- A `PuzzleEngine` in [library/src/game_engine.hpp](library/src/game_engine.hpp) and [library/src/game_engine.cpp](library/src/game_engine.cpp)
+- A CLI example in [examples/puzzle_engine_cli.cpp](examples/puzzle_engine_cli.cpp)
+- A replay/JSON helper in [examples/puzzle_engine_tool.cpp](examples/puzzle_engine_tool.cpp)
+- A local GUI in [web/puzzle_gui/index.html](web/puzzle_gui/index.html) served by [web/puzzle_gui_server.py](web/puzzle_gui_server.py)
+
+### What the puzzle engine does
+
+- Lets you load all four hands, trump, a target number of tricks for N-S, and either a starting leader or an already-played opening card
+- Computes all legal cards and all optimal cards at each turn
+- Allows play to continue after a non-optimal card, while marking the puzzle as failed for smart play
+- Tracks move history, the optimal choices available on each turn, current trick state, and the final N-S / E-W trick totals
+
+### Hand and card input format
+
+- Hands are entered in `Spades.Hearts.Diamonds.Clubs` order
+- Example hand: `AKQJ.T98.76.5432`
+- Individual cards are entered as `SA`, `HT`, `D7`, `C2`
+
+### Build and run
+
+Build the helper binaries:
+
+```bash
+cd /Users/mahirajne/kida/dds
+bazel build //examples:puzzle_engine_cli
+bazel build //examples:puzzle_engine_tool
+```
+
+Run the CLI:
+
+```bash
+bazel run //examples:puzzle_engine_cli
+```
+
+Run the GUI locally:
+
+```bash
+python3 web/puzzle_gui_server.py --host 127.0.0.1 --port 8123
+```
+
+Then open:
+
+- `http://127.0.0.1:8123`
+
+To share on your local network:
+
+```bash
+python3 web/puzzle_gui_server.py --host 0.0.0.0 --port 8123
+```
+
+Then other devices on the same network can open:
+
+- `http://<your-lan-ip>:8123`
+
 
 ## Version 3.0 Release Status
 
@@ -55,4 +113,3 @@ Current baseline for this branch:
 ## 2.9 Documentation
 
 You can find the original [README](doc/README_2_9_0.md) and descriptions of the search algorithm in the doc folder.
-

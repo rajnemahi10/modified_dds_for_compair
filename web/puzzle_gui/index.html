@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DDS Puzzle Tester</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="page">
+    <section class="panel setup-panel">
+      <div class="eyebrow">DDS Puzzle Tester</div>
+      <h1>Bridge Puzzle GUI</h1>
+      <p class="intro">
+        Fill the deal, choose the target and start position, then step through the play.
+        The GUI will show the legal cards, the optimal cards at that turn, and whether smart play is still valid.
+      </p>
+
+      <div class="toolbar">
+        <button type="button" id="sampleDeal">Load Sample</button>
+        <button type="button" id="clearAll" class="ghost">Clear</button>
+      </div>
+
+      <div class="setup-grid">
+        <label>
+          <span>Target tricks for N-S</span>
+          <input id="target" type="number" min="0" max="13" value="8">
+        </label>
+
+        <label>
+          <span>Trump</span>
+          <select id="trump">
+            <option value="S">Spades</option>
+            <option value="H">Hearts</option>
+            <option value="D">Diamonds</option>
+            <option value="C">Clubs</option>
+            <option value="N">No Trump</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Start mode</span>
+          <select id="startMode">
+            <option value="leader">New trick (choose leader)</option>
+            <option value="opening">After opening card</option>
+          </select>
+        </label>
+
+        <label id="leaderWrap">
+          <span>Leader</span>
+          <select id="leader">
+            <option value="N">North</option>
+            <option value="E">East</option>
+            <option value="S">South</option>
+            <option value="W">West</option>
+          </select>
+        </label>
+
+        <label id="openingPlayerWrap" class="hidden">
+          <span>Opening player</span>
+          <select id="openingPlayer">
+            <option value="N">North</option>
+            <option value="E">East</option>
+            <option value="S">South</option>
+            <option value="W">West</option>
+          </select>
+        </label>
+
+        <label id="openingCardWrap" class="hidden">
+          <span>Opening card</span>
+          <input id="openingCard" type="text" placeholder="SA">
+        </label>
+      </div>
+
+      <div class="hands-grid">
+        <label>
+          <span>North</span>
+          <input id="north" type="text" placeholder="AKQJ.T98.76.5432">
+        </label>
+        <label>
+          <span>East</span>
+          <input id="east" type="text" placeholder="T9.7654.AKQ.JT98">
+        </label>
+        <label>
+          <span>South</span>
+          <input id="south" type="text" placeholder="8765.AKQ.JT9.AKQ">
+        </label>
+        <label>
+          <span>West</span>
+          <input id="west" type="text" placeholder="432.J32.854.76">
+        </label>
+      </div>
+
+      <div class="helpbox">
+        <div>Hand format: <code>AKQJ.T98.76.5432</code></div>
+        <div>Card format: <code>SA</code>, <code>HT</code>, <code>D7</code>, <code>C2</code></div>
+      </div>
+
+      <div class="toolbar">
+        <button type="button" id="loadPosition">Load Position</button>
+      </div>
+    </section>
+
+    <section class="panel play-panel">
+      <div class="status-header">
+        <div>
+          <div class="eyebrow">Current State</div>
+          <h2 id="statusTitle">Waiting for a position</h2>
+        </div>
+        <div id="badgeRow" class="badge-row"></div>
+      </div>
+
+      <div id="errorBox" class="error hidden"></div>
+
+      <div class="summary-grid">
+        <article class="summary-card">
+          <span class="summary-label">Current player</span>
+          <strong id="currentPlayer">-</strong>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Current side</span>
+          <strong id="currentSide">-</strong>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Score</span>
+          <strong id="scoreLine">NS 0 / EW 0</strong>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Best from here</span>
+          <strong id="bestLine">-</strong>
+        </article>
+      </div>
+
+      <section class="board-panel">
+        <div class="board-header">
+          <div>
+            <h3>Live Table View</h3>
+            <p class="board-copy">
+              Remaining cards for all four players are shown together. The current player's optimal cards are highlighted in green.
+            </p>
+          </div>
+        </div>
+
+        <div class="bridge-board">
+          <section class="hand-seat hand-seat-north">
+            <div class="seat-label">North</div>
+            <div id="boardNorth" class="seat-cards"></div>
+          </section>
+
+          <section class="hand-seat hand-seat-west">
+            <div class="seat-label">West</div>
+            <div id="boardWest" class="seat-cards vertical"></div>
+          </section>
+
+          <section class="board-center">
+            <div class="center-meta">
+              <span id="boardTrump" class="pill warn">Trump: -</span>
+              <span id="boardTarget" class="pill warn">Target: -</span>
+              <span id="boardTricks" class="pill ok">Tricks: NS 0 / EW 0</span>
+              <span id="lastWinner" class="pill warn">Last winner: -</span>
+            </div>
+            <div>
+              <div class="seat-label">Current trick</div>
+              <div id="currentTrick" class="trick-grid"></div>
+            </div>
+          </section>
+
+          <section class="hand-seat hand-seat-east">
+            <div class="seat-label">East</div>
+            <div id="boardEast" class="seat-cards vertical"></div>
+          </section>
+
+          <section class="hand-seat hand-seat-south">
+            <div class="seat-label">South</div>
+            <div id="boardSouth" class="seat-cards"></div>
+          </section>
+        </div>
+      </section>
+
+      <div class="play-grid">
+        <article class="play-card">
+          <h3>Optimal cards now</h3>
+          <div id="optimalCards" class="pill-row"></div>
+        </article>
+        <article class="play-card">
+          <h3>Legal cards now</h3>
+          <div id="legalCards" class="move-buttons"></div>
+        </article>
+      </div>
+
+      <div class="toolbar">
+        <input id="manualMove" type="text" placeholder="Play card manually, e.g. SA">
+        <button type="button" id="playManual" class="ghost">Play typed card</button>
+        <button type="button" id="undoMove" class="ghost">Undo last move</button>
+      </div>
+
+      <section class="table-panel">
+        <h3>Move evaluation</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Card</th>
+              <th>Optimal</th>
+              <th>NS total</th>
+              <th>EW total</th>
+              <th>Side total</th>
+            </tr>
+          </thead>
+          <tbody id="evaluationBody"></tbody>
+        </table>
+      </section>
+
+      <section class="table-panel">
+        <h3>Played history</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>Played</th>
+              <th>Optimal?</th>
+              <th>Optimal choices at turn</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

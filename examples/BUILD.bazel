@@ -42,6 +42,30 @@ cc_library(
 
 # Example binaries
 cc_binary(
+    name = "puzzle_engine_tool",
+    srcs = ["puzzle_engine_tool.cpp"],
+    copts = EXAMPLES_CPPOPTS,
+    linkopts = DDS_LINKOPTS,
+    local_defines = EXAMPLES_LOCAL_DEFINES,
+    deps = [
+        "//library/src:dds",
+        "//library/src/api:api_definitions",
+    ],
+)
+
+cc_binary(
+    name = "puzzle_engine_cli",
+    srcs = ["puzzle_engine_cli.cpp"],
+    copts = EXAMPLES_CPPOPTS,
+    linkopts = DDS_LINKOPTS,
+    local_defines = EXAMPLES_LOCAL_DEFINES,
+    deps = [
+        "//library/src:dds",
+        "//library/src/api:api_definitions",
+    ],
+)
+
+cc_binary(
     name = "analyse_all_plays_bin",
     srcs = ["analyse_all_plays_bin.cpp"],
     copts = EXAMPLES_CPPOPTS,
@@ -268,6 +292,8 @@ filegroup(
         ":calc_par_context_example",
         ":dealer_par",
         ":par",
+        ":puzzle_engine_cli",
+        ":puzzle_engine_tool",
         ":solve_all_boards",
         ":solve_board",
         ":solve_board_pbn",
